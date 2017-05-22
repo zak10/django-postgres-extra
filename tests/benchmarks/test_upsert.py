@@ -5,7 +5,7 @@ from django.db import models, transaction
 from django.db.utils import IntegrityError
 import pytest
 
-from ..fake_model import get_fake_model
+from ..util import get_fake_model
 
 
 @pytest.mark.django_db()
