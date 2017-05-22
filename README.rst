@@ -23,6 +23,7 @@ Major features
 --------------
 * Single query, concurrency safe upserts, or safely ignoring a duplicate insert.
 * Unique and not null constraints for `HStoreField`.
+* Materialized views with migration support.
 * Signals for updates.
 
 
@@ -64,7 +65,7 @@ FAQ - Frequently asked questions
 
 1. Why do I need to change the database back-end/engine?
 
-    We utilize PostgreSQL's `hstore` data type, which allows you to store key-value pairs in a column.  In order to create `UNIQUE` constraints on specific key, we need to create a special type of index. We could do this without a custom database back-end, but it would require everyone to manually write their migrations. By using a custom database back-end, we added support for this. When changing the `uniqueness` constraint on a `HStoreField`, our custom database back-end takes care of creating, updating and deleting these constraints/indexes in the database.
+    Many of our custom implementations require custom migration implementations as well. Currently the only way tto make that happen is to implement a custom database back-end. Our database back-end simply sits on top of the PostgreSQL back-end that comes with Django.
 
 2. I am already using a custom database back-end, can I still use yours?
 
