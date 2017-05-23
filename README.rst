@@ -78,3 +78,12 @@ FAQ - Frequently asked questions
 4. Does this package work with Django 1.X?
 
     No. Only Django 1.10 or newer is supported.
+
+5. On which Django versions has this package been tested?
+
+   * Django 1.10
+   * Django 1.11
+
+6. Is this used in production?
+
+   Yes. We're actively using this in production. Our other open-source package (`django-localized-fields`) also uses this library, and also that one is actively used in production. There are various other people who have been using these packages in production.
