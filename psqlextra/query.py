@@ -7,6 +7,7 @@ from django.db.models.constants import LOOKUP_SEP
 from django.core.exceptions import SuspiciousOperation
 
 from .fields import HStoreField
+from .fields.hstore_field import HStoreFieldKey
 from .expressions import HStoreColumn
 from .datastructures import ConditionalJoin
 
@@ -80,6 +81,35 @@ class PostgresQuery(sql.Query):
 
             join.add_condition(field, value)
 
+    def names_to_path(self, *args, **kwargs):
+        path, final_field, targets, names = super().names_to_path(*args, **kwargs)
+
+        new_path = [
+            inner_path
+            for inner_path in path
+            if not isinstance(inner_path.join_field, HStoreField)
+        ]
+
+        if isinstance(final_field, HStoreFieldKey):
+            final_field = final_field.field
+
+        new_targets = []
+        for target in targets:
+            if isinstance(target, HStoreFieldKey):
+                self.add_select(
+                    HStoreColumn(target.model._meta.db_table or target.model.name, target.field, target.key)
+                )
+            else:
+                new_targets.append(target)
+
+
+        print('-' * 10)
+        print('new path: %s' % str(new_path))
+        print('final field: %s' % str(final_field))
+        print('new targets: %s' % str(new_targets))
+        print('names: %s' % str(names))
+        return new_path, final_field, new_targets, names
+
     def add_fields(self, field_names: List[str], allow_m2m: bool=True) -> bool:
         """
         Adds the given (model) fields to the select set. The field names are
@@ -103,10 +133,13 @@ class PostgresQuery(sql.Query):
         for name in field_names:
             parts = name.split(LOOKUP_SEP)
 
+            print('processing: %s' % parts)
+
             # it cannot be a special hstore thing if there's no __ in it
             if len(parts) > 1:
-                column_name, hstore_key = parts[:2]
+                column_name, hstore_key = parts[-2:]
                 is_hstore, field = self._is_hstore_field(column_name)
+                print('IS HSTORE: %s - %s' % (column_name, is_hstore))
                 if is_hstore:
                     self.add_select(
                         HStoreColumn(self.model._meta.db_table or self.model.name, field, hstore_key)
