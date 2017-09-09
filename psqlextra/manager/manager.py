@@ -2,7 +2,7 @@ from typing import Dict, List, Union, Tuple
 
 import django
 from django.conf import settings
-from django.db import models, transaction
+from django.db import models, transaction, router
 from django.db.models.sql import UpdateQuery
 from django.db.models.sql.constants import CURSOR
 from django.db.models.fields import NOT_PROVIDED
@@ -214,7 +214,17 @@ class PostgresQuerySet(models.QuerySet):
 
             model_init_fields[column_name] = column_value
 
-        return self.model(**model_init_fields)
+        # create the model instance with the fields returned
+        # as a result of the insert query
+        obj = self.model(**model_init_fields)
+
+        # figure out which database instance this model should
+        # be associated with, without this, writing won't work
+        # on the model instance we're creating
+        using = router.db_for_write(obj.__class__, instance=obj)
+        obj._state.db = using
+
+        return obj
 
     def upsert(self, conflict_target: List, fields: Dict) -> int:
         """Creates a new record or updates the existing one
