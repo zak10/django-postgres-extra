@@ -7,13 +7,13 @@ with open(os.path.join(os.path.dirname(__file__), 'README.rst'), encoding='utf-8
 
 setup(
     name='django-postgres-extra',
-    version='1.21a11',
+    version='1.21a12',
     packages=find_packages(),
     include_package_data=True,
     license='MIT License',
     description='Bringing all of PostgreSQL\'s awesomeness to Django.',
     long_description=README,
-    url='https://github.com/SectorLabs/django-postgres-extra',
+    url='https://github.com/zak10/django-postgres-extra',
     author='Sector Labs',
     author_email='open-source@sectorlabs.ro',
     keywords=['django', 'postgres', 'extra', 'hstore', 'ltree'],
