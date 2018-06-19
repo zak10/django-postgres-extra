@@ -93,10 +93,7 @@ class PostgresQuerySet(models.QuerySet):
 
         # build up the query to execute
         self._for_write = True
-        if django.VERSION >= (2, 0):
-            query = self.query.chain(UpdateQuery)
-        else:
-            query = self.query.clone(UpdateQuery)
+        query = self.query.clone(UpdateQuery)
         query._annotations = None
         query.add_update_values(fields)
 
@@ -139,7 +136,7 @@ class PostgresQuerySet(models.QuerySet):
 
         return self
 
-    def bulk_insert(self, rows, return_model=False):
+    def bulk_insert(self, rows):
         """Creates multiple new records in the database.
 
         This allows specifying custom conflict behavior using .on_conflict().
@@ -150,25 +147,15 @@ class PostgresQuerySet(models.QuerySet):
                 An array of dictionaries, where each dictionary
                 describes the fields to insert.
 
-            return_model (default: False):
-                If model instances should be returned rather than
-                just dicts.
-
         Returns:
-            A list of either the dicts of the rows inserted, including the pk or
-            the models of the rows inserted with defaults for any fields not specified
         """
 
         if self.conflict_target or self.conflict_action:
             compiler = self._build_insert_compiler(rows)
-            objs = compiler.execute_sql(return_id=True)
-            if return_model:
-                return [self.model(**dict(r, **k)) for r, k in zip(rows, objs)]
-            else:
-                return [dict(r, **k) for r, k in zip(rows, objs)]
+            return compiler.execute_sql(return_id=True)
 
         # no special action required, use the standard Django bulk_create(..)
-        return super().bulk_create([self.model(**fields) for fields in rows])
+        super().bulk_create([self.model(**fields) for fields in rows])
 
     def insert(self, **fields):
         """Creates a new record in the database.
@@ -187,12 +174,12 @@ class PostgresQuerySet(models.QuerySet):
         if self.conflict_target or self.conflict_action:
             compiler = self._build_insert_compiler([fields])
             rows = compiler.execute_sql(return_id=True)
-
-            pk_field_name = self.model._meta.pk.name
-            return rows[0][pk_field_name]
+            if 'id' in rows[0]:
+                return rows[0]['id']
+            return None
 
         # no special action required, use the standard Django create(..)
-        return super().create(**fields).pk
+        return super().create(**fields).id
 
     def insert_and_get(self, **fields):
         """Creates a new record in the database and then gets
@@ -257,7 +244,7 @@ class PostgresQuerySet(models.QuerySet):
         self.on_conflict(conflict_target, ConflictAction.UPDATE, index_predicate)
         return self.insert(**fields)
 
-    def upsert_and_get(self, conflict_target: List, fields: Dict, index_predicate: str=None):
+    def upsert_and_get(self, conflict_target: List, fields: Dict):
         """Creates a new record or updates the existing one
         with the specified data and then gets the row.
 
@@ -268,19 +255,15 @@ class PostgresQuerySet(models.QuerySet):
             fields:
                 Fields to insert/update.
 
-            index_predicate:
-                The index predicate to satisfy an arbiter partial index (i.e. what partial index to use for checking
-                conflicts)
-
         Returns:
             The model instance representing the row
             that was created/updated.
         """
 
-        self.on_conflict(conflict_target, ConflictAction.UPDATE, index_predicate)
+        self.on_conflict(conflict_target, ConflictAction.UPDATE)
         return self.insert_and_get(**fields)
 
-    def bulk_upsert(self, conflict_target: List, rows: List[Dict], index_predicate: str=None):
+    def bulk_upsert(self, conflict_target: List, rows: List[Dict]):
         """Creates a set of new records or updates the existing
         ones with the specified data.
 
@@ -290,16 +273,9 @@ class PostgresQuerySet(models.QuerySet):
 
             rows:
                 Rows to upsert.
-
-            index_predicate:
-                The index predicate to satisfy an arbiter partial index (i.e. what partial index to use for checking
-                conflicts)
         """
 
-        if not rows or len(rows) <= 0:
-            return
-
-        self.on_conflict(conflict_target, ConflictAction.UPDATE, index_predicate)
+        self.on_conflict(conflict_target, ConflictAction.UPDATE)
         return self.bulk_insert(rows)
 
     def _build_insert_compiler(self, rows: List[Dict]):
@@ -488,7 +464,7 @@ class PostgresManager(models.Manager):
 
         return PostgresQuerySet(self.model, using=self._db)
 
-    def on_conflict(self, fields: List[Union[str, Tuple[str]]], action, index_predicate: str=None):
+    def on_conflict(self, fields: List[Union[str, Tuple[str]]], action):
         """Sets the action to take when conflicts arise when attempting
         to insert/create a new row.
 
@@ -498,11 +474,8 @@ class PostgresManager(models.Manager):
 
             action:
                 The action to take when the conflict occurs.
-
-            index_predicate:
-                The index predicate to satisfy an arbiter partial index.
         """
-        return self.get_queryset().on_conflict(fields, action, index_predicate)
+        return self.get_queryset().on_conflict(fields, action)
 
     def upsert(self, conflict_target: List, fields: Dict, index_predicate: str=None) -> int:
         """Creates a new record or updates the existing one
@@ -524,7 +497,7 @@ class PostgresManager(models.Manager):
 
         return self.get_queryset().upsert(conflict_target, fields, index_predicate)
 
-    def upsert_and_get(self, conflict_target: List, fields: Dict, index_predicate: str=None):
+    def upsert_and_get(self, conflict_target: List, fields: Dict):
         """Creates a new record or updates the existing one
         with the specified data and then gets the row.
 
@@ -535,17 +508,14 @@ class PostgresManager(models.Manager):
             fields:
                 Fields to insert/update.
 
-            index_predicate:
-                The index predicate to satisfy an arbiter partial index.
-
         Returns:
             The model instance representing the row
             that was created/updated.
         """
 
-        return self.get_queryset().upsert_and_get(conflict_target, fields, index_predicate)
+        return self.get_queryset().upsert_and_get(conflict_target, fields)
 
-    def bulk_upsert(self, conflict_target: List, rows: List[Dict], index_predicate: str=None):
+    def bulk_upsert(self, conflict_target: List, rows: List[Dict]):
         """Creates a set of new records or updates the existing
         ones with the specified data.
 
@@ -553,14 +523,11 @@ class PostgresManager(models.Manager):
             conflict_target:
                 Fields to pass into the ON CONFLICT clause.
 
-            index_predicate:
-                The index predicate to satisfy an arbiter partial index.
-
             rows:
                 Rows to upsert.
         """
 
-        return self.get_queryset().bulk_upsert(conflict_target, rows, index_predicate)
+        return self.get_queryset().bulk_upsert(conflict_target, rows)
 
     @staticmethod
     def _on_model_save(sender, **kwargs):
@@ -579,3 +546,4 @@ class PostgresManager(models.Manager):
 
         instance = kwargs['instance']
         signals.delete.send(sender, pk=instance.pk)
+

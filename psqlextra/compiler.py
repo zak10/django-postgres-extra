@@ -1,8 +1,6 @@
 from django.core.exceptions import SuspiciousOperation
 from django.db.models.sql.compiler import SQLInsertCompiler, SQLUpdateCompiler
 
-from psqlextra.expressions import HStoreValue
-
 
 class PostgresReturningUpdateCompiler(SQLUpdateCompiler):
     """Compiler for SQL UPDATE statements that return
@@ -17,31 +15,6 @@ class PostgresReturningUpdateCompiler(SQLUpdateCompiler):
             primary_keys = cursor.fetchall()
 
         return primary_keys
-
-    def as_sql(self):
-        self._prepare_query_values()
-        return super().as_sql()
-
-    def _prepare_query_values(self):
-        """Extra prep on query values by converting
-        dictionaries into :see:HStoreValue expressions.
-
-        This allows putting expressions in a dictionary.
-        The :see:HStoreValue will take care of resolving
-        the expressions inside the dictionary."""
-
-        new_query_values = []
-        for field, model, val in self.query.values:
-            if isinstance(val, dict):
-                val = HStoreValue(val)
-
-            new_query_values.append((
-                field,
-                model,
-                val
-            ))
-
-        self.query.values = new_query_values
 
     def _form_returning(self):
         """Builds the RETURNING part of the query."""
@@ -182,13 +155,12 @@ class PostgresInsertCompiler(SQLInsertCompiler):
             (
                 'WITH insdata AS ('
                 '{insert} ON CONFLICT {conflict_target} DO UPDATE'
-                ' SET {pk_column} = NULL WHERE FALSE RETURNING {returning})'
+                ' SET id = NULL WHERE FALSE RETURNING {returning})'
                 ' SELECT * FROM insdata UNION ALL'
                 ' SELECT {returning} FROM {table} WHERE {where_clause} LIMIT 1;'
             ).format(
                 insert=sql,
                 conflict_target=conflict_target,
-                pk_column=self.qn(self.query.model._meta.pk.column),
                 returning=returning,
                 table=self.query.objs[0]._meta.db_table,
                 where_clause=where_clause
@@ -299,12 +271,7 @@ class PostgresInsertCompiler(SQLInsertCompiler):
         return SQLInsertCompiler.prepare_value(
             self,
             field,
-            # Note: this deliberately doesn't use `pre_save_val` as we don't
-            # want things like auto_now on DateTimeField (etc.) to change the
-            # value. We rely on pre_save having already been done by the
-            # underlying compiler so that things like FileField have already had
-            # the opportunity to save out their data.
-            getattr(self.query.objs[0], field.attname)
+            getattr(self.query.objs[0], field_name)
         )
 
     def _normalize_field_name(self, field_name) -> str:
@@ -324,3 +291,4 @@ class PostgresInsertCompiler(SQLInsertCompiler):
             field_name, _ = field_name
 
         return field_name
+
